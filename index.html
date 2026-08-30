@@ -10,14 +10,15 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="apple-touch-icon" href="icon-192.png">
 
-  <!-- PDF.js CDN -->
+  <!-- PDF.js & jsPDF CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
   <style>
     :root {
       --bg-workspace: #f1f5f9;
-      --panel-bg: rgba(255, 255, 255, 0.92);
-      --panel-border: rgba(226, 232, 240, 0.9);
+      --panel-bg: rgba(255, 255, 255, 0.95);
+      --panel-border: rgba(203, 213, 225, 0.9);
       --primary: #2563eb;
       --primary-light: #dbeafe;
       --text-main: #1e293b;
@@ -35,41 +36,52 @@
       color: var(--text-main);
     }
 
-    /* Ana Üst Bar */
+    /* Taşınabilir Araç Çubuğu (Floating Draggable Toolbar) */
     .top-bar {
       position: fixed;
-      top: 10px;
+      top: 15px;
       left: 50%;
       transform: translateX(-50%);
       background: var(--panel-bg);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
       border: 1px solid var(--panel-border);
-      padding: 6px 14px;
+      padding: 6px 12px;
       border-radius: 18px;
       display: flex;
-      gap: 8px;
+      gap: 7px;
       align-items: center;
       z-index: 10000;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
-      max-width: 96vw;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+      max-width: 98vw;
       overflow-x: auto;
+      touch-action: none;
     }
+
+    .drag-handle {
+      cursor: grab;
+      padding: 4px 6px;
+      color: #94a3b8;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+    }
+    .drag-handle:active { cursor: grabbing; }
 
     .brand-group {
       display: flex;
       flex-direction: column;
-      margin-right: 6px;
+      margin-right: 4px;
     }
     .brand-title {
       font-weight: 900;
       color: var(--primary);
-      font-size: 16px;
+      font-size: 15px;
       letter-spacing: 0.5px;
       line-height: 1;
     }
     .brand-author {
-      font-size: 8.5px;
+      font-size: 8px;
       font-weight: 700;
       color: #94a3b8;
       letter-spacing: 0.8px;
@@ -81,9 +93,9 @@
       background: #f8fafc;
       color: var(--text-main);
       border: 1px solid #e2e8f0;
-      padding: 6px 10px;
-      border-radius: 10px;
-      font-size: 12.5px;
+      padding: 5px 9px;
+      border-radius: 9px;
+      font-size: 12px;
       cursor: pointer;
       font-weight: 600;
       display: inline-flex;
@@ -100,30 +112,28 @@
       box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
     }
     .btn:disabled { opacity: 0.35; cursor: not-allowed; }
-    .sep { width: 1px; height: 22px; background: #cbd5e1; margin: 0 2px; flex-shrink: 0; }
+    .sep { width: 1px; height: 20px; background: #cbd5e1; margin: 0 2px; flex-shrink: 0; }
 
-    /* Palet ve Kontroller */
     .color-dot {
-      width: 22px;
-      height: 22px;
+      width: 20px;
+      height: 20px;
       border-radius: 50%;
       cursor: pointer;
       border: 2px solid #fff;
       box-shadow: 0 0 0 1px #cbd5e1;
-      transition: transform 0.1s ease;
       flex-shrink: 0;
     }
-    .color-dot.active { transform: scale(1.18); box-shadow: 0 0 0 2px var(--primary); }
+    .color-dot.active { transform: scale(1.15); box-shadow: 0 0 0 2px var(--primary); }
     .add-color-btn {
-      width: 22px;
-      height: 22px;
+      width: 20px;
+      height: 20px;
       border-radius: 50%;
       border: 1px dashed #94a3b8;
       background: #f8fafc;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 13px;
+      font-size: 12px;
       cursor: pointer;
       color: #64748b;
     }
@@ -132,13 +142,13 @@
       background: #f8fafc;
       border: 1px solid #cbd5e1;
       border-radius: 8px;
-      padding: 4px 6px;
-      font-size: 12px;
+      padding: 3px 5px;
+      font-size: 11px;
       color: var(--text-main);
       outline: none;
     }
 
-    /* Sticker / Çıkartma Çekmecesi */
+    /* İkon Seçim Menüsü */
     .sticker-menu {
       display: none;
       position: absolute;
@@ -147,19 +157,18 @@
       border: 1px solid var(--panel-border);
       border-radius: 12px;
       padding: 8px;
-      box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.15);
       grid-template-columns: repeat(5, 1fr);
       gap: 6px;
       z-index: 10001;
     }
     .sticker-menu.show { display: grid; }
     .sticker-item {
-      font-size: 18px;
+      font-size: 20px;
       padding: 6px;
       text-align: center;
       cursor: pointer;
       border-radius: 6px;
-      transition: background 0.1s;
     }
     .sticker-item:hover { background: var(--primary-light); }
 
@@ -171,12 +180,12 @@
       justify-content: center;
       align-items: flex-start;
       overflow: auto;
-      padding: 70px 20px 40px 20px;
+      padding: 80px 20px 40px 20px;
     }
     #paper {
       position: relative;
       background: #ffffff;
-      box-shadow: 0 12px 35px rgba(100, 116, 139, 0.15);
+      box-shadow: 0 12px 35px rgba(100, 116, 139, 0.18);
       border-radius: 6px;
       margin-bottom: 40px;
     }
@@ -188,8 +197,8 @@
     /* Yapışkan Notlar */
     .sticky-note {
       position: absolute;
-      width: 180px;
-      min-height: 120px;
+      width: 170px;
+      min-height: 110px;
       background: #fef08a;
       border: 1px solid #fde047;
       border-radius: 8px;
@@ -203,7 +212,7 @@
     }
     .sticky-note textarea {
       width: 100%;
-      height: 90px;
+      height: 80px;
       background: transparent;
       border: none;
       outline: none;
@@ -214,8 +223,8 @@
     }
     .sticky-close {
       position: absolute;
-      top: 4px;
-      right: 6px;
+      top: 3px;
+      right: 5px;
       cursor: pointer;
       font-weight: bold;
       font-size: 11px;
@@ -225,7 +234,9 @@
 </head>
 <body>
 
-<div class="top-bar">
+<div class="top-bar" id="draggableToolbar">
+  <div class="drag-handle" id="dragHandle" title="Taşımak için basılı tutup sürükleyin">⠿</div>
+  
   <div class="brand-group">
     <span class="brand-title">ÇİZİK</span>
     <span class="brand-author">HAZIRLAYAN: YILDIRAY HOCA</span>
@@ -233,40 +244,42 @@
 
   <div class="sep"></div>
 
-  <!-- Kalem Seçimi -->
-  <button class="btn active" id="fountainPenBtn" title="Dolma Kalem">✒️ Dolma</button>
-  <button class="btn" id="ballPenBtn" title="Tükenmez Kalem">🖊️ Tükenmez</button>
-  <button class="btn" id="brushPenBtn" title="Fırça Kalem">🖌️ Fırça</button>
-  <button class="btn" id="hlBtn" title="Fosforlu Kalem">🖍️ Fosfor</button>
-  <button class="btn" id="eraserBtn" title="Vektörel Silgi">🧹 Silgi</button>
+  <!-- Kalemler -->
+  <button class="btn active" id="fountainPenBtn">✒️ Dolma</button>
+  <button class="btn" id="ballPenBtn">🖊️ Tükenmez</button>
+  <button class="btn" id="brushPenBtn">🖌️ Fırça</button>
+  <button class="btn" id="hlBtn">🖍️ Fosfor</button>
+  
+  <!-- Silgi Seçenekleri -->
+  <button class="btn" id="strokeEraserBtn" title="Çizgiyi tamamen siler">🧹 Çizgi Silgisi</button>
+  <button class="btn" id="partialEraserBtn" title="Parça parça siler">🧽 Parça Silgi</button>
 
   <div class="sep"></div>
 
   <!-- Renk & Şeffaflık -->
-  <div style="display:flex; align-items:center; gap:5px;" id="paletteContainer">
+  <div style="display:flex; align-items:center; gap:4px;" id="paletteContainer">
     <div class="color-dot active" style="background:#0f172a;" data-color="#0f172a"></div>
     <div class="color-dot" style="background:#ef4444;" data-color="#ef4444"></div>
     <div class="color-dot" style="background:#2563eb;" data-color="#2563eb"></div>
     <div class="color-dot" style="background:#10b981;" data-color="#10b981"></div>
-    <div class="color-dot" style="background:#f59e0b;" data-color="#f59e0b"></div>
   </div>
   <input type="color" id="customColorPicker" style="display:none;">
-  <div class="add-color-btn" id="addColorBtn" title="Özel Renk Ekle">+</div>
+  <div class="add-color-btn" id="addColorBtn" title="Özel Renk">+</div>
 
   <div class="sep"></div>
 
   <!-- Kalınlık & Opaklık -->
   <label style="font-size:11px; font-weight:600; color:var(--text-sub);">Boyut: 
-    <input type="range" id="sizeRange" min="1" max="30" value="4" style="width:65px;">
+    <input type="range" id="sizeRange" min="1" max="30" value="4" style="width:55px;">
   </label>
   <label id="opacityControl" style="font-size:11px; font-weight:600; color:var(--text-sub); display:none;">Saydamlık: 
-    <input type="range" id="opacityRange" min="0.1" max="0.9" step="0.05" value="0.4" style="width:55px;">
+    <input type="range" id="opacityRange" min="0.1" max="0.9" step="0.05" value="0.4" style="width:50px;">
   </label>
 
   <div class="sep"></div>
 
-  <!-- İkon & Not Ekleme -->
-  <button class="btn" id="stickerBtn">⭐ İkonlar</button>
+  <!-- İkon & Not -->
+  <button class="btn" id="stickerBtn">⭐ İkon</button>
   <div class="sticker-menu" id="stickerMenu">
     <span class="sticker-item">⭐</span>
     <span class="sticker-item">⚠️</span>
@@ -276,26 +289,27 @@
     <span class="sticker-item">📐</span>
     <span class="sticker-item">√x</span>
     <span class="sticker-item">π</span>
-    <span class="sticker-item">∞</span >
+    <span class="sticker-item">∞</span>
     <span class="sticker-item">∫</span>
   </div>
-  <button class="btn" id="addNoteBtn">📝 Not Kağıdı</button>
+  <button class="btn" id="addNoteBtn">📝 Not</button>
 
   <div class="sep"></div>
 
-  <!-- PDF & Sayfa Yönetimi -->
+  <!-- PDF & Sayfa İşlemleri -->
   <label class="btn" style="cursor: pointer;">
     📁 PDF Aç
     <input type="file" id="pdfInput" accept="application/pdf" style="display: none;">
   </label>
-  <button class="btn" id="addBlankPageBtn" title="Araya Boş Sayfa Ekle">➕ Boş Sayfa</button>
+  <button class="btn" id="addBlankPageBtn">➕ Boş Sayfa</button>
   
   <button class="btn" id="prevPageBtn" disabled>◀</button>
-  <span style="font-size:12px; font-weight:700; min-width:50px; text-align:center;" id="pageInfo">1 / 1</span>
+  <span style="font-size:11px; font-weight:700; min-width:45px; text-align:center;" id="pageInfo">1 / 1</span>
   <button class="btn" id="nextPageBtn" disabled>▶</button>
 
   <div class="sep"></div>
-  <button class="btn" id="undoBtn">↩ Geri</button>
+  <button class="btn" id="exportPdfBtn" style="background:#10b981; color:#fff; border-color:#059669;">📥 PDF İndir</button>
+  <button class="btn" id="undoBtn">↩</button>
   <button class="btn" id="clearBtn">🗑️</button>
 </div>
 
@@ -309,7 +323,7 @@
 </div>
 
 <script>
-  // 1. INDEXEDDB VERİTABANI YÖNETİCİSİ (Kalıcı Otomatik Kayıt)
+  // 1. VERİTABANI YÖNETİCİSİ (IndexedDB)
   const DB_NAME = 'CizikDB';
   const STORE_NAME = 'project_state';
   let db;
@@ -319,14 +333,9 @@
       const request = indexedDB.open(DB_NAME, 1);
       request.onupgradeneeded = (e) => {
         const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME);
-        }
+        if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
       };
-      request.onsuccess = (e) => {
-        db = e.target.result;
-        resolve(db);
-      };
+      request.onsuccess = (e) => { db = e.target.result; resolve(db); };
       request.onerror = reject;
     });
   }
@@ -335,23 +344,17 @@
     if (!db) return;
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    const data = {
-      currentPage,
-      totalPages,
-      pageTypes,
-      documentStrokes,
-      stickyNotes,
+    store.put({
+      currentPage, totalPages, pageTypes, documentStrokes, stickyNotes,
       pdfDataBuffer: cachedPdfBuffer
-    };
-    store.put(data, 'last_session');
+    }, 'last_session');
   }
 
   function loadAppState() {
     return new Promise((resolve) => {
       if (!db) return resolve(null);
       const tx = db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.get('last_session');
+      const req = tx.objectStore(STORE_NAME).get('last_session');
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => resolve(null);
     });
@@ -390,8 +393,8 @@
   }
   resizeCanvases(width, height);
 
-  // Uygulama Durumu
-  let currentTool = 'fountain'; // 'fountain' | 'ball' | 'brush' | 'highlighter' | 'eraser' | 'sticker'
+  // Durum Yönetimi
+  let currentTool = 'fountain'; // 'fountain' | 'ball' | 'brush' | 'highlighter' | 'strokeEraser' | 'partialEraser' | 'sticker'
   let currentColor = '#0f172a';
   let penSize = 4;
   let hlOpacity = 0.4;
@@ -399,13 +402,12 @@
 
   let currentPage = 1;
   let totalPages = 1;
-  let pageTypes = { 1: { type: 'grid' } }; // 'pdf' | 'grid' | 'blank'
+  let pageTypes = { 1: { type: 'grid' } };
   let documentStrokes = { 1: [] };
   let stickyNotes = { 1: [] };
   let pdfDoc = null;
   let cachedPdfBuffer = null;
 
-  // Izgara / Arka Plan Çizimi
   function renderBackground() {
     bgCtx.clearRect(0, 0, width, height);
     const pInfo = pageTypes[currentPage];
@@ -423,10 +425,10 @@
     }
   }
 
-  // 3. GELİŞMİŞ KALEM VE ÇİZİM MOTORU
+  // 3. GELİŞMİŞ ÇİZİM MOTORU
   function renderSingleStroke(ctx, s) {
     if (s.type === 'sticker') {
-      ctx.font = '28px sans-serif';
+      ctx.font = '32px sans-serif';
       ctx.fillText(s.icon, s.x, s.y);
       return;
     }
@@ -440,14 +442,13 @@
       const p1 = s.points[i - 1];
       const p2 = s.points[i];
 
-      // Kalem Çeşidine Göre Dinamik Dinamik Kalınlık Hesabı
       let currentLineWidth = s.size;
       if (s.tool === 'fountain') {
         currentLineWidth = s.size * (0.2 + p2.p * 1.2);
       } else if (s.tool === 'brush') {
         currentLineWidth = s.size * (0.1 + Math.pow(p2.p, 2) * 1.8);
       } else if (s.tool === 'ball') {
-        currentLineWidth = s.size; // Tükenmez kalem sabit genişlik
+        currentLineWidth = s.size;
       } else if (s.tool === 'highlighter') {
         currentLineWidth = s.size * 5;
       }
@@ -483,7 +484,7 @@
     saveAppState();
   }
 
-  // 4. ETKİLEŞİM & POINTER OLAYLARI
+  // 4. ETKİLEŞİM & POINTER
   let isDrawing = false;
   let currentPoints = [];
 
@@ -500,22 +501,27 @@
     e.preventDefault();
     const pos = getPointerPos(e);
 
+    // İkonu Tıklanan Yere Anında Bas
     if (currentTool === 'sticker') {
       if (!documentStrokes[currentPage]) documentStrokes[currentPage] = [];
       documentStrokes[currentPage].push({
         type: 'sticker',
         tool: 'sticker',
         icon: activeSticker,
-        x: pos.x,
-        y: pos.y
+        x: pos.x - 14,
+        y: pos.y + 14
       });
       redraw();
       setTool('fountain');
       return;
     }
 
-    if (currentTool === 'eraser') {
-      eraseAt(pos.x, pos.y);
+    if (currentTool === 'strokeEraser') {
+      eraseStrokeAt(pos.x, pos.y);
+      isDrawing = true;
+      return;
+    } else if (currentTool === 'partialEraser') {
+      erasePartialAt(pos.x, pos.y);
       isDrawing = true;
       return;
     }
@@ -531,8 +537,11 @@
     e.preventDefault();
     const pos = getPointerPos(e);
 
-    if (currentTool === 'eraser') {
-      eraseAt(pos.x, pos.y);
+    if (currentTool === 'strokeEraser') {
+      eraseStrokeAt(pos.x, pos.y);
+      return;
+    } else if (currentTool === 'partialEraser') {
+      erasePartialAt(pos.x, pos.y);
       return;
     }
 
@@ -558,7 +567,7 @@
     isDrawing = false;
     try { activeCanvas.releasePointerCapture(e.pointerId); } catch(err){}
 
-    if (currentTool !== 'eraser' && currentTool !== 'sticker' && currentPoints.length > 1) {
+    if (!['strokeEraser', 'partialEraser', 'sticker'].includes(currentTool) && currentPoints.length > 1) {
       if (!documentStrokes[currentPage]) documentStrokes[currentPage] = [];
 
       let strokeColor = currentColor;
@@ -583,7 +592,8 @@
   activeCanvas.addEventListener('pointerup', stopDraw);
   activeCanvas.addEventListener('pointercancel', stopDraw);
 
-  function eraseAt(x, y) {
+  // Vektörel Çizgi Silgisi (Tamamen Siler)
+  function eraseStrokeAt(x, y) {
     const list = documentStrokes[currentPage] || [];
     const prevLen = list.length;
     documentStrokes[currentPage] = list.filter(s => {
@@ -593,66 +603,76 @@
     if (documentStrokes[currentPage].length !== prevLen) redraw();
   }
 
-  // 5. YAPIŞKAN NOT KAĞIDI (STICKY NOTE)
-  function addStickyNote() {
-    if (!stickyNotes[currentPage]) stickyNotes[currentPage] = [];
-    stickyNotes[currentPage].push({
-      id: Date.now(),
-      x: 80,
-      y: 100,
-      text: ''
-    });
-    redraw();
+  // Parça Silgisi (Piksel / Segment Kesici)
+  function erasePartialAt(x, y, radius = 18) {
+    const list = documentStrokes[currentPage] || [];
+    let modified = false;
+    const newStrokes = [];
+
+    for (const s of list) {
+      if (s.type === 'sticker') {
+        if (Math.hypot(s.x - x, s.y - y) > radius) newStrokes.push(s);
+        else modified = true;
+        continue;
+      }
+
+      let currentSegment = [];
+      for (const p of s.points) {
+        if (Math.hypot(p.x - x, p.y - y) > radius) {
+          currentSegment.push(p);
+        } else {
+          if (currentSegment.length > 1) {
+            newStrokes.push({ ...s, points: currentSegment });
+            modified = true;
+          }
+          currentSegment = [];
+        }
+      }
+      if (currentSegment.length > 1) {
+        newStrokes.push({ ...s, points: currentSegment });
+      }
+      if (currentSegment.length !== s.points.length) modified = true;
+    }
+
+    if (modified) {
+      documentStrokes[currentPage] = newStrokes;
+      redraw();
+    }
   }
 
-  function renderStickyNotes() {
-    document.querySelectorAll('.sticky-note').forEach(n => n.remove());
-    const notes = stickyNotes[currentPage] || [];
+  // 5. TAŞINABİLİR ARAÇ ÇUBUĞU (DRAGGABLE TOOLBAR)
+  const toolbar = document.getElementById('draggableToolbar');
+  const dragHandle = document.getElementById('dragHandle');
+  let isDraggingToolbar = false;
+  let tStartX, tStartY, initialLeft, initialTop;
 
-    notes.forEach(n => {
-      const noteEl = document.createElement('div');
-      noteEl.className = 'sticky-note';
-      noteEl.style.left = n.x + 'px';
-      noteEl.style.top = n.y + 'px';
+  dragHandle.addEventListener('pointerdown', (e) => {
+    isDraggingToolbar = true;
+    dragHandle.setPointerCapture(e.pointerId);
+    tStartX = e.clientX;
+    tStartY = e.clientY;
+    const rect = toolbar.getBoundingClientRect();
+    initialLeft = rect.left;
+    initialTop = rect.top;
+    toolbar.style.transform = 'none';
+  });
 
-      noteEl.innerHTML = `
-        <span class="sticky-close">✕</span>
-        <textarea placeholder="Notunu buraya yaz...">${n.text}</textarea>
-      `;
+  dragHandle.addEventListener('pointermove', (e) => {
+    if (!isDraggingToolbar) return;
+    const dx = e.clientX - tStartX;
+    const dy = e.clientY - tStartY;
+    toolbar.style.left = Math.max(10, Math.min(window.innerWidth - toolbar.offsetWidth - 10, initialLeft + dx)) + 'px';
+    toolbar.style.top = Math.max(10, Math.min(window.innerHeight - toolbar.offsetHeight - 10, initialTop + dy)) + 'px';
+  });
 
-      noteEl.querySelector('textarea').oninput = (e) => {
-        n.text = e.target.value;
-        saveAppState();
-      };
-
-      noteEl.querySelector('.sticky-close').onclick = () => {
-        stickyNotes[currentPage] = stickyNotes[currentPage].filter(x => x.id !== n.id);
-        renderStickyNotes();
-        saveAppState();
-      };
-
-      // Sürükleme
-      let isDragging = false, startX, startY;
-      noteEl.onmousedown = (e) => {
-        if (e.target.tagName === 'TEXTAREA' || e.target.classList.contains('sticky-close')) return;
-        isDragging = true;
-        startX = e.clientX - n.x;
-        startY = e.clientY - n.y;
-      };
-      window.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        n.x = e.clientX - startX;
-        n.y = e.clientY - startY;
-        noteEl.style.left = n.x + 'px';
-        noteEl.style.top = n.y + 'px';
-      });
-      window.addEventListener('mouseup', () => {
-        if (isDragging) { isDragging = false; saveAppState(); }
-      });
-
-      paper.appendChild(noteEl);
-    });
+  function stopDragToolbar(e) {
+    if (isDraggingToolbar) {
+      isDraggingToolbar = false;
+      try { dragHandle.releasePointerCapture(e.pointerId); } catch(err){}
+    }
   }
+  dragHandle.addEventListener('pointerup', stopDragToolbar);
+  dragHandle.addEventListener('pointercancel', stopDragToolbar);
 
   // 6. PDF VE SAYFA YÖNETİMİ
   async function renderPage(pageNum) {
@@ -688,10 +708,8 @@
     document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
   }
 
-  // Araya Boş Sayfa Ekle
   document.getElementById('addBlankPageBtn').onclick = () => {
     totalPages++;
-    // Sayfaları bir sağa kaydır
     for (let i = totalPages; i > currentPage + 1; i--) {
       pageTypes[i] = pageTypes[i - 1];
       documentStrokes[i] = documentStrokes[i - 1];
@@ -704,7 +722,6 @@
     renderPage(currentPage);
   };
 
-  // PDF Yükleme
   document.getElementById('pdfInput').onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -735,20 +752,71 @@
     if (currentPage < totalPages) renderPage(currentPage + 1);
   };
 
-  // 7. ARAYÜZ VE ARAÇ BAĞLANTILARI
+  // 7. PDF DIŞA AKTARMA (PDF EXPORT)
+  document.getElementById('exportPdfBtn').onclick = async () => {
+    const { jsPDF } = window.jspdf;
+    const btn = document.getElementById('exportPdfBtn');
+    btn.textContent = '⏳ Hazırlanıyor...';
+    btn.disabled = true;
+
+    try {
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [width, height] });
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+
+      for (let i = 1; i <= totalPages; i++) {
+        if (i > 1) pdf.addPage([width, height], 'portrait');
+        tempCtx.clearRect(0, 0, width, height);
+
+        // 1. Arka Planı Çiz
+        const pInfo = pageTypes[i];
+        if (pInfo && pInfo.type === 'pdf' && pdfDoc) {
+          const page = await pdfDoc.getPage(pInfo.pdfPageIndex);
+          const vp = page.getViewport({ scale: width / page.getViewport({ scale: 1 }).width });
+          await page.render({ canvasContext: tempCtx, viewport: vp }).promise;
+        } else {
+          tempCtx.fillStyle = '#ffffff';
+          tempCtx.fillRect(0, 0, width, height);
+          tempCtx.strokeStyle = 'rgba(100, 116, 139, 0.12)';
+          tempCtx.lineWidth = 1;
+          for (let x = 0; x <= width; x += 26) { tempCtx.beginPath(); tempCtx.moveTo(x,0); tempCtx.lineTo(x,height); tempCtx.stroke(); }
+          for (let y = 0; y <= height; y += 26) { tempCtx.beginPath(); tempCtx.moveTo(0,y); tempCtx.lineTo(width,y); tempCtx.stroke(); }
+        }
+
+        // 2. Çizimleri ve Fosforları Bas
+        const pStrokes = documentStrokes[i] || [];
+        pStrokes.forEach(s => renderSingleStroke(tempCtx, s));
+
+        // 3. PDF'e Aktar
+        const imgData = tempCanvas.toDataURL('image/jpeg', 0.95);
+        pdf.addImage(imgData, 'JPEG', 0, 0, width, height);
+      }
+
+      pdf.save(`cizik_ders_notu_${Date.now()}.pdf`);
+    } catch (err) {
+      alert('PDF dışa aktarılırken hata oluştu: ' + err.message);
+    } finally {
+      btn.textContent = '📥 PDF İndir';
+      btn.disabled = false;
+    }
+  };
+
+  // 8. BUTON VE MENÜ BAĞLANTILARI
   const toolBtns = {
     fountain: document.getElementById('fountainPenBtn'),
     ball: document.getElementById('ballPenBtn'),
     brush: document.getElementById('brushPenBtn'),
     highlighter: document.getElementById('hlBtn'),
-    eraser: document.getElementById('eraserBtn')
+    strokeEraser: document.getElementById('strokeEraserBtn'),
+    partialEraser: document.getElementById('partialEraserBtn')
   };
 
   function setTool(tool) {
     currentTool = tool;
     Object.values(toolBtns).forEach(b => b.classList.remove('active'));
     if (toolBtns[tool]) toolBtns[tool].classList.add('active');
-
     document.getElementById('opacityControl').style.display = (tool === 'highlighter') ? 'inline-flex' : 'none';
   }
 
@@ -756,40 +824,35 @@
   toolBtns.ball.onclick = () => setTool('ball');
   toolBtns.brush.onclick = () => setTool('brush');
   toolBtns.highlighter.onclick = () => setTool('highlighter');
-  toolBtns.eraser.onclick = () => setTool('eraser');
+  toolBtns.strokeEraser.onclick = () => setTool('strokeEraser');
+  toolBtns.partialEraser.onclick = () => setTool('partialEraser');
 
-  // Palet & Favori Renkler
-  function setupColorPickers() {
-    const container = document.getElementById('paletteContainer');
-    container.addEventListener('click', (e) => {
-      if (e.target.classList.contains('color-dot')) {
-        document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
-        e.target.classList.add('active');
-        currentColor = e.target.dataset.color;
-      }
-    });
-
-    const addBtn = document.getElementById('addColorBtn');
-    const colorPicker = document.getElementById('customColorPicker');
-    addBtn.onclick = () => colorPicker.click();
-
-    colorPicker.onchange = (e) => {
-      const col = e.target.value;
-      const dot = document.createElement('div');
-      dot.className = 'color-dot active';
-      dot.style.background = col;
-      dot.dataset.color = col;
+  // Palet
+  document.getElementById('paletteContainer').addEventListener('click', (e) => {
+    if (e.target.classList.contains('color-dot')) {
       document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
-      container.appendChild(dot);
-      currentColor = col;
-    };
-  }
-  setupColorPickers();
+      e.target.classList.add('active');
+      currentColor = e.target.dataset.color;
+    }
+  });
+
+  const customColorPicker = document.getElementById('customColorPicker');
+  document.getElementById('addColorBtn').onclick = () => customColorPicker.click();
+  customColorPicker.onchange = (e) => {
+    const col = e.target.value;
+    const dot = document.createElement('div');
+    dot.className = 'color-dot active';
+    dot.style.background = col;
+    dot.dataset.color = col;
+    document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
+    document.getElementById('paletteContainer').appendChild(dot);
+    currentColor = col;
+  };
 
   document.getElementById('sizeRange').oninput = (e) => { penSize = parseFloat(e.target.value); };
   document.getElementById('opacityRange').oninput = (e) => { hlOpacity = parseFloat(e.target.value); };
 
-  // İkon / Çıkartma Menüsü
+  // İkon Menüsü
   const stickerBtn = document.getElementById('stickerBtn');
   const stickerMenu = document.getElementById('stickerMenu');
   stickerBtn.onclick = () => stickerMenu.classList.toggle('show');
@@ -803,7 +866,55 @@
     };
   });
 
-  document.getElementById('addNoteBtn').onclick = addStickyNote;
+  // Not Ekleme
+  document.getElementById('addNoteBtn').onclick = () => {
+    if (!stickyNotes[currentPage]) stickyNotes[currentPage] = [];
+    stickyNotes[currentPage].push({ id: Date.now(), x: 60, y: 80, text: '' });
+    redraw();
+  };
+
+  function renderStickyNotes() {
+    document.querySelectorAll('.sticky-note').forEach(n => n.remove());
+    const notes = stickyNotes[currentPage] || [];
+
+    notes.forEach(n => {
+      const noteEl = document.createElement('div');
+      noteEl.className = 'sticky-note';
+      noteEl.style.left = n.x + 'px';
+      noteEl.style.top = n.y + 'px';
+
+      noteEl.innerHTML = `
+        <span class="sticky-close">✕</span>
+        <textarea placeholder="Not yaz...">${n.text}</textarea>
+      `;
+
+      noteEl.querySelector('textarea').oninput = (e) => { n.text = e.target.value; saveAppState(); };
+      noteEl.querySelector('.sticky-close').onclick = () => {
+        stickyNotes[currentPage] = stickyNotes[currentPage].filter(x => x.id !== n.id);
+        renderStickyNotes();
+        saveAppState();
+      };
+
+      let isDragging = false, startX, startY;
+      noteEl.onmousedown = (e) => {
+        if (e.target.tagName === 'TEXTAREA' || e.target.classList.contains('sticky-close')) return;
+        isDragging = true;
+        startX = e.clientX - n.x;
+        startY = e.clientY - n.y;
+      };
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        n.x = e.clientX - startX;
+        n.y = e.clientY - startY;
+        noteEl.style.left = n.x + 'px';
+        noteEl.style.top = n.y + 'px';
+      });
+      window.addEventListener('mouseup', () => { if (isDragging) { isDragging = false; saveAppState(); } });
+
+      paper.appendChild(noteEl);
+    });
+  }
+
   document.getElementById('undoBtn').onclick = () => {
     if (documentStrokes[currentPage] && documentStrokes[currentPage].length) {
       documentStrokes[currentPage].pop();
@@ -815,7 +926,7 @@
     redraw();
   };
 
-  // 8. BAŞLANGIÇTA OTOMATİK VERİTABANINDAN YÜKLEME
+  // 9. BAŞLANGIÇTA OTOMATİK VERİTABANINDAN GERİ YÜKLE
   window.addEventListener('DOMContentLoaded', async () => {
     await initDB();
     const saved = await loadAppState();
