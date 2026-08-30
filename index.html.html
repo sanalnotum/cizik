@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>ÇİZİK</title>
+  
+  <!-- PWA & Apple iPad Desteği -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ÇİZİK">
+  <link rel="apple-touch-icon" href="icon-192.png">
+
+  <!-- PDF.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <style>
+    :root {
+      --bg-color: #121218;
+      --toolbar-bg: rgba(30, 30, 40, 0.88);
+      --card-border: rgba(255, 255, 255, 0.12);
+      --accent: #3b82f6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+    body {
+      background: var(--bg-color);
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      touch-action: none;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* Üst Araç Çubuğu (Floating iPad Stili) */
+    .toolbar {
+      position: fixed;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--toolbar-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border);
+      padding: 6px 14px;
+      border-radius: 20px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      color: #fff;
+      z-index: 1000;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    }
+    .brand {
+      font-weight: 900;
+      letter-spacing: 1.5px;
+      color: #60a5fa;
+      margin-right: 6px;
+      font-size: 15px;
+    }
+    .btn {
+      background: rgba(255,255,255,0.06);
+      color: #e2e8f0;
+      border: 1px solid var(--card-border);
+      padding: 6px 10px;
+      border-radius: 10px;
+      font-size: 13px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s ease;
+    }
+    .btn:active, .btn.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: #60a5fa;
+    }
+    .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .sep { width: 1px; height: 20px; background: var(--card-border); margin: 0 2px; }
+    
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: none;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      cursor: pointer;
+      background: none;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+    input[type="color"]::-webkit-color-swatch { border: 2px solid #ffffff44; border-radius: 50%; }
+
+    select {
+      background: rgba(255,255,255,0.06);
+      color: #fff;
+      border: 1px solid var(--card-border);
+      padding: 5px 8px;
+      border-radius: 8px;
+      font-size: 12px;
+      outline: none;
+    }
+
+    #viewport {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      position: relative;
+    }
+    #pageWrapper {
+      position: absolute;
+      transform-origin: 0 0;
+      box-shadow: 0 15px 50px rgba(0,0,0,0.7);
+      background: #ffffff;
+      border-radius: 4px;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    #hlCanvas { mix-blend-mode: multiply; }
+  </style>
+</head>
+<body>
+
+<div class="toolbar">
+  <span class="brand">ÇİZİK</span>
+  <button class="btn active" id="penBtn">✏️ Kalem</button>
+  <button class="btn" id="hlBtn">🖍️ Fosfor</button>
+  <button class="btn" id="eraserBtn">🧹 Silgi</button>
+  <button class="btn" id="lassoBtn">✂️ Kement</button>
+  
+  <div class="sep"></div>
+  <input type="color" id="strokeColor" value="#0f172a">
+  <select id="bgTemplateSelect">
+    <option value="grid">Kareli</option>
+    <option value="lines">Çizgili</option>
+    <option value="blank">Düz Beyaz</option>
+    <option value="darkboard">Kara Tahta</option>
+  </select>
+  
+  <div class="sep"></div>
+  <button class="btn" id="undoBtn" disabled>↩</button>
+  <button class="btn" id="redoBtn" disabled>↪</button>
+  
+  <div class="sep"></div>
+  <label class="btn" style="cursor: pointer;">
+    📄 PDF
+    <input type="file" id="pdfInput" accept="application/pdf" style="display: none;">
+  </label>
+  <button class="btn" id="exportBtn">💾 Kaydet</button>
+</div>
+
+<div id="viewport">
+  <div id="pageWrapper">
+    <canvas id="bgCanvas"></canvas>
+    <canvas id="hlCanvas"></canvas>
+    <canvas id="inkCanvas"></canvas>
+    <canvas id="activeCanvas"></canvas>
+  </div>
+</div>
+
+<script type="module">
+  import { getStroke } from 'https://cdn.skypack.net/perfect-freehand';
+
+  // PDF.js Worker
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  // Service Worker Kaydı (PWA)
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW error:', err));
+  }
+
+  const viewport = document.getElementById('viewport');
+  const pageWrapper = document.getElementById('pageWrapper');
+  const bgCanvas = document.getElementById('bgCanvas');
+  const hlCanvas = document.getElementById('hlCanvas');
+  const inkCanvas = document.getElementById('inkCanvas');
+  const activeCanvas = document.getElementById('activeCanvas');
+
+  const bgCtx = bgCanvas.getContext('2d');
+  const hlCtx = hlCanvas.getContext('2d');
+  const inkCtx = inkCanvas.getContext('2d');
+  const activeCtx = activeCanvas.getContext('2d');
+
+  const penBtn = document.getElementById('penBtn');
+  const hlBtn = document.getElementById('hlBtn');
+  const eraserBtn = document.getElementById('eraserBtn');
+  const lassoBtn = document.getElementById('lassoBtn');
+  const undoBtn = document.getElementById('undoBtn');
+  const redoBtn = document.getElementById('redoBtn');
+  const strokeColor = document.getElementById('strokeColor');
+  const bgTemplateSelect = document.getElementById('bgTemplateSelect');
+  const pdfInput = document.getElementById('pdfInput');
+  const exportBtn = document.getElementById('exportBtn');
+
+  const dpr = window.devicePixelRatio || 1;
+  const pageWidth = 1000;
+  const pageHeight = 1414; // A4 Oranı
+
+  pageWrapper.style.width = `${pageWidth}px`;
+  pageWrapper.style.height = `${pageHeight}px`;
+
+  [bgCanvas, hlCanvas, inkCanvas, activeCanvas].forEach(c => {
+    c.width = pageWidth * dpr;
+    c.height = pageHeight * dpr;
+    c.style.width = `${pageWidth}px`;
+    c.style.height = `${pageHeight}px`;
+    c.getContext('2d').scale(dpr, dpr);
+  });
+
+  // Durum
+  let currentTool = 'pen'; // 'pen' | 'highlighter' | 'eraser' | 'lasso'
+  let strokes = [];
+  let undoStack = [];
+  let pdfPage = null;
+
+  // Viewport (Zoom & Pan)
+  let scale = 0.85;
+  let panX = (window.innerWidth - pageWidth * scale) / 2;
+  let panY = 75;
+
+  function updateTransform() {
+    pageWrapper.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`;
+  }
+  updateTransform();
+
+  function screenToCanvas(clientX, clientY) {
+    return {
+      x: (clientX - panX) / scale,
+      y: (clientY - panY) / scale
+    };
+  }
+
+  // Şablon Çizici
+  function renderBackground() {
+    bgCtx.clearRect(0, 0, pageWidth, pageHeight);
+    const template = bgTemplateSelect.value;
+
+    if (template === 'darkboard') {
+      pageWrapper.style.background = '#1a1f2c';
+      bgCtx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    } else {
+      pageWrapper.style.background = '#ffffff';
+      bgCtx.strokeStyle = 'rgba(0, 0, 0, 0.07)';
+    }
+
+    bgCtx.lineWidth = 1;
+
+    if (template === 'grid' || template === 'darkboard') {
+      const step = 28;
+      for (let x = 0; x <= pageWidth; x += step) {
+        bgCtx.beginPath(); bgCtx.moveTo(x, 0); bgCtx.lineTo(x, pageHeight); bgCtx.stroke();
+      }
+      for (let y = 0; y <= pageHeight; y += step) {
+        bgCtx.beginPath(); bgCtx.moveTo(0, y); bgCtx.lineTo(pageWidth, y); bgCtx.stroke();
+      }
+    } else if (template === 'lines') {
+      const step = 32;
+      for (let y = 60; y <= pageHeight; y += step) {
+        bgCtx.beginPath(); bgCtx.moveTo(0, y); bgCtx.lineTo(pageWidth, y); bgCtx.stroke();
+      }
+    }
+  }
+  renderBackground();
+  bgTemplateSelect.onchange = () => {
+    if (!pdfPage) renderBackground();
+  };
+
+  // SVG Path Yardımcısı
+  function getSvgPathFromStroke(strokePoints) {
+    if (!strokePoints.length) return '';
+    const d = strokePoints.reduce(
+      (acc, [x0, y0], i, arr) => {
+        const [x1, y1] = arr[(i + 1) % arr.length];
+        acc.push(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
+        return acc;
+      },
+      ['M', ...strokePoints[0], 'Q']
+    );
+    d.push('Z');
+    return d.join(' ');
+  }
+
+  function computeBounds(points, margin = 20) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of points) {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    return { minX: minX - margin, minY: minY - margin, maxX: maxX + margin, maxY: maxY + margin };
+  }
+
+  function redrawAll() {
+    hlCtx.clearRect(0, 0, pageWidth, pageHeight);
+    inkCtx.clearRect(0, 0, pageWidth, pageHeight);
+
+    for (const s of strokes) {
+      const ctx = s.tool === 'highlighter' ? hlCtx : inkCtx;
+      ctx.fillStyle = s.color;
+      ctx.fill(s.path);
+    }
+    undoBtn.disabled = strokes.length === 0;
+    redoBtn.disabled = undoStack.length === 0;
+    localStorage.setItem('cizik_autosave', JSON.stringify(strokes.map(s => ({
+      tool: s.tool, color: s.color, size: s.size, points: s.points
+    }))));
+  }
+
+  // Kement Geometrisi (Ray Casting)
+  function isPointInPoly(pt, poly) {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      if (((poly[i][1] > pt[1]) !== (poly[j][1] > pt[1])) &&
+          (pt[0] < (poly[j][0] - poly[i][0]) * (pt[1] - poly[i][1]) / (poly[j][1] - poly[i][1]) + poly[i][0])) {
+        c = !c;
+      }
+    }
+    return c;
+  }
+
+  // Araç Seçimleri
+  function setTool(tool) {
+    currentTool = tool;
+    [penBtn, hlBtn, eraserBtn, lassoBtn].forEach(b => b.classList.remove('active'));
+    if (tool === 'pen') penBtn.classList.add('active');
+    if (tool === 'highlighter') hlBtn.classList.add('active');
+    if (tool === 'eraser') eraserBtn.classList.add('active');
+    if (tool === 'lasso') lassoBtn.classList.add('active');
+  }
+
+  penBtn.onclick = () => setTool('pen');
+  hlBtn.onclick = () => setTool('highlighter');
+  eraserBtn.onclick = () => setTool('eraser');
+  lassoBtn.onclick = () => setTool('lasso');
+
+  undoBtn.onclick = () => {
+    if (strokes.length) { undoStack.push(strokes.pop()); redrawAll(); }
+  };
+  redoBtn.onclick = () => {
+    if (undoStack.length) { strokes.push(undoStack.pop()); redrawAll(); }
+  };
+
+  // Etkileşim Yönetimi (Stylus / Apple Pencil & Zoom/Pan)
+  const activeTouches = new Map();
+  let isInteracting = false;
+  let rawPoints = [];
+  let lastPinchDist = null;
+  let lastPinchCenter = null;
+
+  let selectedStrokes = [];
+  let selectionBox = null;
+  let isDraggingSelection = false;
+  let dragStartPos = { x: 0, y: 0 };
+  let lassoPath = [];
+
+  viewport.addEventListener('pointerdown', (e) => {
+    activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
+
+    // Tek nokta: Kalem veya Grafik Tablet Çizimi
+    if (activeTouches.size === 1) {
+      isInteracting = true;
+      const pos = screenToCanvas(e.clientX, e.clientY);
+
+      if (currentTool === 'eraser') {
+        eraseAt(pos.x, pos.y);
+      } else if (currentTool === 'lasso') {
+        if (selectionBox && pos.x >= selectionBox.x && pos.x <= selectionBox.x + selectionBox.width &&
+            pos.y >= selectionBox.y && pos.y <= selectionBox.y + selectionBox.height) {
+          isDraggingSelection = true;
+          dragStartPos = pos;
+        } else {
+          selectedStrokes = [];
+          selectionBox = null;
+          lassoPath = [[pos.x, pos.y]];
+          redrawAll();
+        }
+      } else {
+        rawPoints = [[pos.x, pos.y, e.pressure || 0.5]];
+        activeCanvas.style.mixBlendMode = currentTool === 'highlighter' ? 'multiply' : 'normal';
+      }
+    } else if (activeTouches.size === 2) {
+      // 2 Parmak: Yakınlaştırma & Kaydırma
+      isInteracting = false;
+      activeCtx.clearRect(0, 0, pageWidth, pageHeight);
+      lastPinchDist = null;
+      lastPinchCenter = null;
+    }
+  });
+
+  viewport.addEventListener('pointermove', (e) => {
+    if (!activeTouches.has(e.pointerId)) return;
+    activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
+
+    // 1. Çizim / Silgi / Kement Modu
+    if (isInteracting && activeTouches.size === 1) {
+      const pos = screenToCanvas(e.clientX, e.clientY);
+
+      if (currentTool === 'eraser') {
+        eraseAt(pos.x, pos.y);
+        return;
+      }
+
+      if (currentTool === 'lasso') {
+        if (isDraggingSelection) {
+          const dx = pos.x - dragStartPos.x;
+          const dy = pos.y - dragStartPos.y;
+          dragStartPos = pos;
+
+          selectedStrokes.forEach(s => {
+            s.points = s.points.map(([px, py, pr]) => [px + dx, py + dy, pr]);
+            s.bounds = computeBounds(s.points);
+            const isHL = s.tool === 'highlighter';
+            const opts = isHL ? { size: 24, thinning: 0.1, smoothing: 0.7, streamline: 0.6, simulatePressure: false, last: true }
+                              : { size: 5, thinning: 0.6, smoothing: 0.5, streamline: 0.5, simulatePressure: false, last: true };
+            s.path = new Path2D(getSvgPathFromStroke(getStroke(s.points, opts)));
+          });
+
+          selectionBox.x += dx; selectionBox.y += dy;
+          redrawAll();
+          activeCtx.clearRect(0, 0, pageWidth, pageHeight);
+          drawBox(activeCtx, selectionBox);
+        } else {
+          lassoPath.push([pos.x, pos.y]);
+          activeCtx.clearRect(0, 0, pageWidth, pageHeight);
+          activeCtx.strokeStyle = '#3b82f6';
+          activeCtx.lineWidth = 1.5;
+          activeCtx.setLineDash([4, 4]);
+          activeCtx.beginPath();
+          activeCtx.moveTo(lassoPath[0][0], lassoPath[0][1]);
+          for (let i = 1; i < lassoPath.length; i++) activeCtx.lineTo(lassoPath[i][0], lassoPath[i][1]);
+          activeCtx.stroke();
+        }
+        return;
+      }
+
+      // Çizim
+      rawPoints.push([pos.x, pos.y, e.pressure || 0.5]);
+      const isHL = currentTool === 'highlighter';
+      const opts = isHL ? { size: 24, thinning: 0.1, smoothing: 0.7, streamline: 0.6, simulatePressure: false, last: true }
+                        : { size: 5, thinning: 0.6, smoothing: 0.5, streamline: 0.5, simulatePressure: e.pointerType === 'mouse', last: true };
+
+      const outline = getStroke(rawPoints, opts);
+      activeCtx.clearRect(0, 0, pageWidth, pageHeight);
+      activeCtx.fillStyle = isHL ? strokeColor.value + 'aa' : strokeColor.value;
+      activeCtx.fill(new Path2D(getSvgPathFromStroke(outline)));
+    }
+
+    // 2. İki Parmak Jestleri
+    if (activeTouches.size === 2) {
+      const touches = Array.from(activeTouches.values());
+      const p1 = touches[0]; const p2 = touches[1];
+      const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      const center = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+
+      if (lastPinchDist !== null) {
+        const factor = dist / lastPinchDist;
+        const newScale = Math.min(Math.max(scale * factor, 0.3), 3.5);
+        panX = center.x - (center.x - panX) * (newScale / scale);
+        panY = center.y - (center.y - panY) * (newScale / scale);
+        panX += center.x - lastPinchCenter.x;
+        panY += center.y - lastPinchCenter.y;
+        scale = newScale;
+        updateTransform();
+      }
+      lastPinchDist = dist;
+      lastPinchCenter = center;
+    }
+  });
+
+  function endPointer(e) {
+    activeTouches.delete(e.pointerId);
+    if (activeTouches.size < 2) { lastPinchDist = null; lastPinchCenter = null; }
+
+    if (isInteracting && activeTouches.size === 0) {
+      isInteracting = false;
+
+      if (currentTool === 'lasso') {
+        if (isDraggingSelection) {
+          isDraggingSelection = false;
+        } else if (lassoPath.length > 5) {
+          selectedStrokes = strokes.filter(s => s.points.some(p => isPointInPoly(p, lassoPath)));
+          if (selectedStrokes.length) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            selectedStrokes.forEach(s => {
+              minX = Math.min(minX, s.bounds.minX); minY = Math.min(minY, s.bounds.minY);
+              maxX = Math.max(maxX, s.bounds.maxX); maxY = Math.max(maxY, s.bounds.maxY);
+            });
+            selectionBox = { x: minX - 10, y: minY - 10, width: (maxX - minX) + 20, height: (maxY - minY) + 20 };
+            activeCtx.clearRect(0, 0, pageWidth, pageHeight);
+            drawBox(activeCtx, selectionBox);
+          } else {
+            activeCtx.clearRect(0, 0, pageWidth, pageHeight);
+          }
+          lassoPath = [];
+        }
+      } else if (currentTool !== 'eraser' && rawPoints.length > 0) {
+        const isHL = currentTool === 'highlighter';
+        const opts = isHL ? { size: 24, thinning: 0.1, smoothing: 0.7, streamline: 0.6, simulatePressure: false, last: true }
+                          : { size: 5, thinning: 0.6, smoothing: 0.5, streamline: 0.5, simulatePressure: e.pointerType === 'mouse', last: true };
+        
+        const outline = getStroke(rawPoints, opts);
+        strokes.push({
+          id: 's_' + Date.now(),
+          tool: currentTool,
+          color: isHL ? strokeColor.value + 'aa' : strokeColor.value,
+          size: opts.size,
+          points: [...rawPoints],
+          bounds: computeBounds(rawPoints),
+          path: new Path2D(getSvgPathFromStroke(outline))
+        });
+        undoStack = [];
+        activeCtx.clearRect(0, 0, pageWidth, pageHeight);
+        redrawAll();
+      }
+      rawPoints = [];
+    }
+  }
+
+  viewport.addEventListener('pointerup', endPointer);
+  viewport.addEventListener('pointercancel', endPointer);
+
+  function eraseAt(x, y) {
+    const prev = strokes.length;
+    strokes = strokes.filter(s => {
+      if (x < s.bounds.minX || x > s.bounds.maxX || y < s.bounds.minY || y > s.bounds.maxY) return true;
+      return !s.points.some(([px, py]) => Math.hypot(px - x, py - y) <= 15);
+    });
+    if (strokes.length !== prev) redrawAll();
+  }
+
+  function drawBox(ctx, box) {
+    ctx.save();
+    ctx.strokeStyle = '#2563eb';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeRect(box.x, box.y, box.width, box.height);
+    ctx.restore();
+  }
+
+  // Desktop Mouse Zoom (Wheel)
+  viewport.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.08 : 0.92;
+    const newScale = Math.min(Math.max(scale * factor, 0.3), 3.5);
+    panX = e.clientX - (e.clientX - panX) * (newScale / scale);
+    panY = e.clientY - (e.clientY - panY) * (newScale / scale);
+    scale = newScale;
+    updateTransform();
+  }, { passive: false });
+
+  // PDF Yükleme
+  pdfInput.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const doc = await pdfjsLib.getDocument(await file.arrayBuffer()).promise;
+    pdfPage = await doc.getPage(1);
+    const vp = pdfPage.getViewport({ scale: pageWidth / pdfPage.getViewport({ scale: 1 }).width });
+    bgCtx.clearRect(0, 0, pageWidth, pageHeight);
+    await pdfPage.render({ canvasContext: bgCtx, viewport: vp, transform: [dpr, 0, 0, dpr, 0, 0] }).promise;
+  };
+
+  // JSON Kaydetme
+  exportBtn.onclick = () => {
+    const data = JSON.stringify(strokes.map(s => ({ tool: s.tool, color: s.color, size: s.size, points: s.points })), null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `cizik_not_${Date.now()}.json`;
+    a.click();
+  };
+
+  // Açılışta Hafızadan Geri Yükle
+  const auto = localStorage.getItem('cizik_autosave');
+  if (auto) {
+    try {
+      const saved = JSON.parse(auto);
+      strokes = saved.map(s => {
+        const isHL = s.tool === 'highlighter';
+        const opts = isHL ? { size: s.size || 24, thinning: 0.1, smoothing: 0.7, streamline: 0.6, simulatePressure: false, last: true }
+                          : { size: s.size || 5, thinning: 0.6, smoothing: 0.5, streamline: 0.5, simulatePressure: false, last: true };
+        return {
+          ...s,
+          bounds: computeBounds(s.points),
+          path: new Path2D(getSvgPathFromStroke(getStroke(s.points, opts)))
+        };
+      });
+      redrawAll();
+    } catch (e) {}
+  }
+</script>
+</body>
+</html>
