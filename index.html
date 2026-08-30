@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ÇİZİK</title>
+  
+  <!-- Kararlı PDF.js Kütüphanesi -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
     body {
@@ -43,18 +47,23 @@
       background: #2a2a38;
       color: #e2e8f0;
       border: 1px solid #444455;
-      padding: 6px 12px;
+      padding: 6px 10px;
       border-radius: 8px;
       font-size: 13px;
       cursor: pointer;
       font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
     }
     .btn.active {
       background: #2563eb;
       color: #fff;
       border-color: #3b82f6;
     }
+    .btn:disabled { opacity: 0.3; cursor: not-allowed; }
     .sep { width: 1px; height: 18px; background: #444; margin: 0 2px; }
+    
     input[type="color"] {
       border: none;
       width: 24px;
@@ -71,6 +80,13 @@
       border-radius: 8px;
       font-size: 12px;
     }
+    .page-info {
+      font-size: 12px;
+      font-weight: bold;
+      color: #94a3b8;
+      min-width: 60px;
+      text-align: center;
+    }
 
     /* Tuval Alanı */
     #viewport {
@@ -80,7 +96,7 @@
       justify-content: center;
       align-items: center;
       overflow: hidden;
-      padding-top: 40px;
+      padding-top: 45px;
     }
     #paper {
       position: relative;
@@ -97,7 +113,8 @@
       width: 100%;
       height: 100%;
     }
-    #activeCanvas { cursor: crosshair; }
+    #bgCanvas, #hlCanvas, #inkCanvas { pointer-events: none; }
+    #activeCanvas { pointer-events: auto; touch-action: none; cursor: crosshair; }
     #hlCanvas { mix-blend-mode: multiply; }
   </style>
 </head>
@@ -119,6 +136,15 @@
   </select>
 
   <div class="sep"></div>
+  <label class="btn" style="cursor: pointer;">
+    📄 PDF Aç
+    <input type="file" id="pdfInput" accept="application/pdf" style="display: none;">
+  </label>
+  <button class="btn" id="prevPageBtn" disabled>◀</button>
+  <span class="page-info" id="pageInfo">1 / 1</span>
+  <button class="btn" id="nextPageBtn" disabled>▶</button>
+
+  <div class="sep"></div>
   <button class="btn" id="undoBtn">↩ Geri Al</button>
   <button class="btn" id="clearBtn">🗑️ Temizle</button>
 </div>
@@ -133,19 +159,11 @@
 </div>
 
 <script>
-  // 1. Önbelleğe Kilitlenen Eski Service Worker'ları Temizleme
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(registrations => {
-      for (let registration of registrations) {
-        registration.unregister();
-      }
-    });
-  }
-  if ('caches' in window) {
-    caches.keys().then(keys => keys.forEach(key => caches.delete(key)));
+  // PDF.js Worker
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
   }
 
-  // 2. Tuval ve Çizim Hazırlıkları
   const paper = document.getElementById('paper');
   const bgCanvas = document.getElementById('bgCanvas');
   const hlCanvas = document.getElementById('hlCanvas');
@@ -164,25 +182,43 @@
   const bgTemplate = document.getElementById('bgTemplate');
   const undoBtn = document.getElementById('undoBtn');
   const clearBtn = document.getElementById('clearBtn');
+  const pdfInput = document.getElementById('pdfInput');
+  const prevPageBtn = document.getElementById('prevPageBtn');
+  const nextPageBtn = document.getElementById('nextPageBtn');
+  const pageInfo = document.getElementById('pageInfo');
 
   const dpr = window.devicePixelRatio || 1;
-  const width = 800;
-  const height = 1100;
+  let width = 800;
+  let height = 1100;
 
-  [bgCanvas, hlCanvas, inkCanvas, activeCanvas].forEach(c => {
-    c.width = width * dpr;
-    c.height = height * dpr;
-    const ctx = c.getContext('2d');
-    ctx.scale(dpr, dpr);
-  });
+  function resizeCanvases(w, h) {
+    width = w;
+    height = h;
+    paper.style.width = w + 'px';
+    paper.style.height = h + 'px';
 
-  let currentTool = 'pen'; // 'pen' | 'highlighter' | 'eraser'
-  let strokes = [];
+    [bgCanvas, hlCanvas, inkCanvas, activeCanvas].forEach(c => {
+      c.width = w * dpr;
+      c.height = h * dpr;
+      const ctx = c.getContext('2d');
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+    });
+  }
+  resizeCanvases(width, height);
+
+  // Sayfa bazlı çizim deposu: { [sayfaNo]: Array<Stroke> }
+  let currentTool = 'pen';
+  let currentPage = 1;
+  let totalPages = 1;
+  let documentStrokes = { 1: [] };
+  let pdfDoc = null;
   let isDrawing = false;
   let currentStroke = [];
 
   // Şablon Çizimi
   function drawTemplate() {
+    if (pdfDoc) return;
     bgCtx.clearRect(0, 0, width, height);
     const mode = bgTemplate.value;
 
@@ -211,12 +247,13 @@
   drawTemplate();
   bgTemplate.onchange = drawTemplate;
 
-  // Çizimleri Ekrana Yeniden Çizme
+  // Çizimleri Ekrana Basma
   function redraw() {
     hlCtx.clearRect(0, 0, width, height);
     inkCtx.clearRect(0, 0, width, height);
 
-    strokes.forEach(s => {
+    const pageStrokes = documentStrokes[currentPage] || [];
+    pageStrokes.forEach(s => {
       const ctx = s.tool === 'highlighter' ? hlCtx : inkCtx;
       renderSingleStroke(ctx, s);
     });
@@ -247,7 +284,6 @@
     }
   }
 
-  // Koordinat Alma
   function getPos(e) {
     const rect = activeCanvas.getBoundingClientRect();
     return {
@@ -270,27 +306,27 @@
   eraserBtn.onclick = () => setTool('eraser');
 
   undoBtn.onclick = () => {
-    if (strokes.length) {
-      strokes.pop();
+    if (documentStrokes[currentPage] && documentStrokes[currentPage].length) {
+      documentStrokes[currentPage].pop();
       redraw();
     }
   };
 
   clearBtn.onclick = () => {
-    strokes = [];
+    documentStrokes[currentPage] = [];
     redraw();
   };
 
-  // Vektörel Silme
   function eraseAt(x, y) {
-    const prev = strokes.length;
-    strokes = strokes.filter(s => {
+    const pageStrokes = documentStrokes[currentPage] || [];
+    const prev = pageStrokes.length;
+    documentStrokes[currentPage] = pageStrokes.filter(s => {
       return !s.points.some(p => Math.hypot(p.x - x, p.y - y) <= 20);
     });
-    if (strokes.length !== prev) redraw();
+    if (documentStrokes[currentPage].length !== prev) redraw();
   }
 
-  // Dokunmatik / Fare Olayları
+  // Çizim Olayları
   activeCanvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     isDrawing = true;
@@ -335,7 +371,9 @@
 
     if (currentTool !== 'eraser' && currentStroke.length > 1) {
       const isHL = currentTool === 'highlighter';
-      strokes.push({
+      if (!documentStrokes[currentPage]) documentStrokes[currentPage] = [];
+      
+      documentStrokes[currentPage].push({
         tool: currentTool,
         color: isHL ? strokeColor.value + '99' : strokeColor.value,
         size: isHL ? 22 : 4,
@@ -349,6 +387,63 @@
 
   activeCanvas.addEventListener('pointerup', stopDraw);
   activeCanvas.addEventListener('pointercancel', stopDraw);
+
+  // --- PDF İŞLEMLERİ ---
+  async function renderPDFPage(pageNum) {
+    if (!pdfDoc) return;
+    const page = await pdfDoc.getPage(pageNum);
+    const unscaledViewport = page.getViewport({ scale: 1.0 });
+    const targetWidth = 800;
+    const scaleFactor = targetWidth / unscaledViewport.width;
+    const viewport = page.getViewport({ scale: scaleFactor });
+
+    resizeCanvases(Math.round(viewport.width), Math.round(viewport.height));
+
+    paper.style.background = '#ffffff';
+    bgCtx.clearRect(0, 0, width, height);
+
+    await page.render({
+      canvasContext: bgCtx,
+      viewport: viewport,
+      transform: [dpr, 0, 0, dpr, 0, 0]
+    }).promise;
+
+    pageInfo.textContent = `${currentPage} / ${totalPages}`;
+    prevPageBtn.disabled = currentPage <= 1;
+    nextPageBtn.disabled = currentPage >= totalPages;
+
+    redraw();
+  }
+
+  pdfInput.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      totalPages = pdfDoc.numPages;
+      currentPage = 1;
+      documentStrokes = {};
+      await renderPDFPage(currentPage);
+    } catch (err) {
+      alert("PDF Yüklenirken hata oluştu: " + err.message);
+    }
+  };
+
+  prevPageBtn.onclick = async () => {
+    if (currentPage > 1) {
+      currentPage--;
+      await renderPDFPage(currentPage);
+    }
+  };
+
+  nextPageBtn.onclick = async () => {
+    if (currentPage < totalPages) {
+      currentPage++;
+      await renderPDFPage(currentPage);
+    }
+  };
 </script>
 </body>
 </html>
